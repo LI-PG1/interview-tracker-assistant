@@ -70,7 +70,7 @@ AI 配置在应用内「⚙ API」中填写（也可直接编辑）：
 
 | # | 现象 | 可能原因 | 解决方案 |
 |---|------|---------|---------|
-| 1 | 双击 start.bat 无反应 | Node 未安装 | `winget install OpenJS.NodeJS.LTS`，重装后重试 |
+| 1 | 双击 start.bat 提示未检测到 Node.js | 系统 PATH 中没有 node | 启动器会自动回退到 Trae 内置 Node（`%USERPROFILE%\.trae-cn\binaries\node\versions\*`）；若仍提示，说明该路径也不存在，运行 `winget install OpenJS.NodeJS.LTS` 安装后重试 |
 | 2 | 提示端口 8902 被占用 | 上次进程残留或端口冲突 | 修改 `config.json` 的 port；或结束占用进程后重试 |
 | 3 | 页面中文乱码 | 系统编码问题 | 确认启动器正常生成 UTF-8 文件；重新双击 start.bat |
 | 4 | 数据「加载失败」 | data 文件损坏 / 服务未启动 | 确认服务在运行；损坏时删除 `data/投递数据.json` 后重启（会重建空表） |
