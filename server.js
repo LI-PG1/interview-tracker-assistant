@@ -98,13 +98,19 @@ function maskKey(k) {
 }
 
 /* ---------- AI 调用（OpenAI 兼容 /chat/completions，Node 原生 fetch，零第三方依赖） ---------- */
+/* DeepSeek V4 默认开启思考模式：抽取/识别这类单步任务无需推理，关闭思考可显著提速且严格 JSON 输出更稳定（官方参数 thinking:{type:'disabled'}，仅 DeepSeek 支持） */
+function aiBody(ai, body) {
+  const b = Object.assign({ temperature: 0.2 }, body);
+  if (String(ai.baseURL).includes('deepseek.com')) b.thinking = { type: 'disabled' };
+  return b;
+}
 function aiChat(ai, messages) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   return fetch(ai.baseURL.replace(/\/+$/, '') + '/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ai.apiKey },
-    body: JSON.stringify({ model: ai.model, messages, temperature: 0.2 }),
+    body: JSON.stringify(aiBody(ai, { model: ai.model, messages, max_tokens: 1024 })),
     signal: ctrl.signal,
   }).finally(() => clearTimeout(timer));
 }
@@ -345,7 +351,7 @@ const server = http.createServer(async (req, res) => {
       const resp = await fetch(ai.baseURL.replace(/\/+$/, '') + '/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ai.apiKey },
-        body: JSON.stringify({ model: ai.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 4, temperature: 0 }),
+        body: JSON.stringify(aiBody(ai, { model: ai.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 4, temperature: 0 })),
         signal: ctrl.signal,
       }).finally(() => clearTimeout(timer));
       if (!resp.ok) {
