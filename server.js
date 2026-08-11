@@ -78,14 +78,14 @@ function ensureConfig() {
 /* ---------- AI 配置（存于 config.json 的 ai 字段，仅本地） ---------- */
 function getAiConfig() {
   const c = getConfig();
-  return Object.assign({ baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: '' }, c.ai || {});
+  return Object.assign({ baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-v4-flash', apiKey: '' }, c.ai || {});
 }
 function saveAiConfig(ai) {
   let cfg = {};
   try { cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch (_) { cfg = { port: 8902 }; }
   cfg.ai = {
     baseURL: String(ai.baseURL || '').trim(),
-    model: String(ai.model || 'deepseek-chat').trim(),
+    model: String(ai.model || 'deepseek-v4-flash').trim(),
     apiKey: String(ai.apiKey || '').trim(),
   };
   const tmp = CONFIG_FILE + '.tmp';

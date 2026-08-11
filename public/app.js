@@ -733,13 +733,13 @@ async function quickParse() {
 /* API 配置弹窗（遵循「选择而非填空」：厂商 + 模型下拉，接口地址自动匹配，仅需输入 Key）
  * 模型准入标准：需能稳定遵循复杂 JSON schema 抽取（排除本地小模型与厂商轻量/免费级模型，保证识别准确率） */
 const AI_PROVIDERS = [
-  { name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', models: ['deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner'] },
+  { name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', models: [{ name: 'DeepSeek-V4-Flash', api: 'deepseek-v4-flash' }, { name: 'DeepSeek-V4-Pro', api: 'deepseek-v4-pro' }] },
   { name: '智谱 GLM', baseURL: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-air'] },
   { name: 'OpenAI', baseURL: 'https://api.openai.com/v1', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'] },
   { name: '通义千问', baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen3-max'] },
   { name: 'Moonshot Kimi', baseURL: 'https://api.moonshot.cn/v1', models: ['moonshot-v1-32k', 'moonshot-v1-128k'] },
-  { name: '腾讯混元', baseURL: 'https://api.hunyuan.cloud.tencent.com/v1', models: ['hunyuan-turbos-latest', 'hunyuan-turbo'] },
-  { name: '百度千帆', baseURL: 'https://qianfan.baidubce.com/v2', models: ['ERNIE-4.0-8K', 'ERNIE-3.5-8K'] },
+  { name: '腾讯混元', baseURL: 'https://api.hunyuan.cloud.tencent.com/v1', models: ['hunyuan-turbos-latest', 'hunyuan-turbo-latest'] },
+  { name: '百度千帆', baseURL: 'https://qianfan.baidubce.com/v2', models: [{ name: 'ERNIE-4.0-8K', api: 'ernie-4.0-8k' }, { name: 'ERNIE-3.5-8K', api: 'ernie-3.5-8k' }] },
   { name: '讯飞星火', baseURL: 'https://spark-api-open.xf-yun.com/v1', models: ['spark-pro', 'spark-max'] },
   { name: 'MiniMax', baseURL: 'https://api.minimaxi.chat/v1', models: ['MiniMax-M2', 'abab6.5s-chat'] },
   { name: '零一万物', baseURL: 'https://api.lingyiwanwu.com/v1', models: ['yi-lightning', 'yi-large'] },

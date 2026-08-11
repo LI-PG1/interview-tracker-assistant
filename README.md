@@ -56,7 +56,7 @@ AI 配置在应用内「⚙ API」中填写（也可直接编辑）：
 ```json
 {
   "port": 8902,
-  "ai": { "baseURL": "https://api.deepseek.com/v1", "model": "deepseek-chat", "apiKey": "sk-…" }
+  "ai": { "baseURL": "https://api.deepseek.com/v1", "model": "deepseek-v4-flash", "apiKey": "sk-…" }
 }
 ```
 
