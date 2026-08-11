@@ -129,17 +129,17 @@ function extractJson(text) {
 const STAGE_STATE_ENUM = ['pass', 'wait', 'fail', 'skip', null];
 const FIXED_STAGE_KEYS = ['resume', 'written', 'hr'];
 
-/* 校验 AI 输出的结构合法性（宽松但拦截类型错误与非法枚举值） */
+/* 校验 AI 输出的结构合法性（宽松但拦截类型错误与非法枚举值；空串视为 null——提示词允许「不确定留空」，不可判死） */
 function validateAiResult(d) {
   const errs = [];
   if (d === null || typeof d !== 'object' || Array.isArray(d)) return ['输出不是 JSON 对象'];
-  if (d.category != null && !['intern', 'autumn'].includes(d.category)) errs.push('category 取值非法');
+  if (d.category != null && d.category !== '' && !['intern', 'autumn'].includes(d.category)) errs.push('category 取值非法');
   if (d.stages != null) {
     if (typeof d.stages !== 'object' || Array.isArray(d.stages)) errs.push('stages 结构非法');
     else {
       for (const k of FIXED_STAGE_KEYS) {
         const v = d.stages[k];
-        if (v != null && typeof v === 'object' && !STAGE_STATE_ENUM.includes(v.state)) errs.push(k + '.state 取值非法');
+        if (v != null && typeof v === 'object' && v.state !== '' && v.state != null && !STAGE_STATE_ENUM.includes(v.state)) errs.push(k + '.state 取值非法');
       }
       if (d.stages.interviews != null && !Array.isArray(d.stages.interviews)) errs.push('interviews 必须是数组');
     }
@@ -168,7 +168,7 @@ function normalizeAiResult(d) {
     city: str(d.city),
     url: str(d.url),
     appliedDate: date(d.appliedDate),
-    interviewAt: str(d.interviewAt).slice(0, 16),
+    interviewAt: str(d.interviewAt).replace('T', ' ').slice(0, 16),
     todo: (d.todo && (d.todo.text || d.todo.due)) ? { text: str(d.todo.text), due: date(d.todo.due) } : null,
     offerDeadline: date(d.offerDeadline) || null,
     note: str(d.note),
@@ -225,7 +225,7 @@ const AI_PARSE_SYSTEM = [
   '  "city": "城市（无则空串；多个城市用 / 分隔，如 北京/上海）",',
   '  "url": "投递/面试链接（无则空串）",',
   '  "appliedDate": "YYYY-MM-DD（无则空串）",',
-  '  "interviewAt": "YYYY-MM-DD HH:mm（面试具体时间，无则空串）",',
+  '  "interviewAt": "YYYY-MM-DD HH:mm（面试具体时间；含会议邀请——飞书/腾讯会议/Zoom/Teams 等的『会议时间』即面试时间，时间范围取开始时刻；今天/明天/后天按今天推算；无年份按今年补；无则空串）",',
   '  "todo": { "text": "需在期限内完成的待办事项（注册/加群/提交材料/确认意向等下一步动作），无则 null", "due": "YYYY-MM-DD（期限日期：如 8-15 前→2026-08-15、3 天内→今天+3；无明确日期则 null）" },',
   '  "offerDeadline": "YYYY-MM-DD（Offer 有效期/接受截止日期，明确提到『XX 前确认/接受 Offer』时提取，无则 null）",',
   '  "note": "备注/下一步动作：无法归入上述结构化字段的信息都放这里，如 流程终止/挂、实习项目（ByteIntern/日常实习）、注册/加群/预约面试要求、邀请码、联系方式、时间要求（如『8-15 前完成』）、岗位描述要点等；尽量保留原文关键信息；无则空串",',
@@ -238,10 +238,12 @@ const AI_PARSE_SYSTEM = [
   '  "uncertain": ["未识别/不确定、需要用户确认的点，如投递日期、面试时间、类别（实习/秋招）等，数组可为空"]',
   '}',
   '要求：只抽取文本中明确提到的信息，不要编造；日期统一为 YYYY-MM-DD；面试按轮次对应 interviews 数组（一面=第1项、二面=第2项…）；类别（实习/秋招）无法确定时 category 留空串并写入 uncertain（用户确认界面会强制选择）；不确定的信息留空并写入 uncertain。',
+  '流程环节：文本未提到任何环节（简历/笔试/面试轮次/HR）时，stages 各 state 一律填 null（不要空串、不要编造），interviews 填空数组 [];不要因为提到会议/面试就把 stages 乱填。',
   '期限表达识别（重要）：把「X 月 X 日前 / 截止 / 最晚 / 须于 / deadline / DDL / 48h 内 / 3 天内」等明确期限都提取出来——',
   '  在线测评/笔试的截止时间→stages.written.deadline（含时分）；',
   '  注册/加群/提交材料/预约面试等非笔试待办→todo（due 为期限日期，text 简述要做什么）。',
   '例如「8-15 前完成注册并预约面试」→ todo={"text":"完成注册并预约面试","due":"2026-08-15"}。',
+  '例如「会议时间：8月12日 (明天) 11:30 - 12:00 (GMT+8) 会议链接：https://vc.feishu.cn/j/967396509」→ interviewAt="2026-08-12 11:30"、url="https://vc.feishu.cn/j/967396509"。',
 ].join('\n');
 
 /* ---------- 数据读写（原子写：临时文件 + rename） ---------- */
