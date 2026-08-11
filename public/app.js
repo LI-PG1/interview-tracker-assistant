@@ -737,7 +737,7 @@ const AI_PROVIDERS = [
   { name: '智谱 GLM', baseURL: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-air'] },
   { name: 'OpenAI', baseURL: 'https://api.openai.com/v1', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'] },
   { name: '通义千问', baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen3-max'] },
-  { name: 'Moonshot Kimi', baseURL: 'https://api.moonshot.cn/v1', models: ['moonshot-v1-32k', 'moonshot-v1-128k'] },
+  { name: 'Moonshot Kimi', baseURL: 'https://api.moonshot.cn/v1', models: ['kimi-k2.6', 'kimi-k3'] },
   { name: '腾讯混元', baseURL: 'https://api.hunyuan.cloud.tencent.com/v1', models: ['hunyuan-turbos-latest', 'hunyuan-turbo-latest'] },
   { name: '百度千帆', baseURL: 'https://qianfan.baidubce.com/v2', models: [{ name: 'ERNIE-4.0-8K', api: 'ernie-4.0-8k' }, { name: 'ERNIE-3.5-8K', api: 'ernie-3.5-8k' }] },
   { name: '讯飞星火', baseURL: 'https://spark-api-open.xf-yun.com/v1', models: ['spark-pro', 'spark-max'] },
