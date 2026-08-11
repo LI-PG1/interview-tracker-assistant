@@ -130,7 +130,11 @@ function jobGroup(job) {
   if (job.result === 'fail' || job.result === 'giveup') return 2;
   const steps = stageList(job);
   const act = steps.filter((x) => x.v && x.v.state && x.v.state !== 'skip');
-  if (act.length === 0) return 0;                       // 纯投递 → 已投待进展
+  if (act.length === 0) {
+    // 纯投递（环节状态未登记），但已约面 → 已进入实质环节，算进行中
+    if (job.interviewAt) return 1;
+    return 0;
+  }
   if (act.some((x) => x.v.state === 'fail')) return 2;  // 任一环节挂 → 已挂
   const first = act[0];
   // 最早动作只是「简历筛选 待筛」且没有更进一步的环节 → 仍属已投待进展
@@ -656,7 +660,7 @@ function renderAiConfirm(data) {
   }
   $('#f-url').value = d.url || '';
   $('#f-applied').value = (d.appliedDate || '').slice(0, 10);
-  if (d.interviewAt) $('#f-interview').value = String(d.interviewAt).slice(0, 16);
+  if (d.interviewAt) $('#f-interview').value = String(d.interviewAt).replace(' ', 'T').slice(0, 16); // datetime-local 需 T 分隔（识别归一化输出为空格格式）
   $('#f-note').value = d.note || '';
   // 期限待办预填（如「8-15 前完成注册并预约面试」→ todo）
   if (d.todo) {
