@@ -747,12 +747,24 @@ const AI_PROVIDERS = [
   { name: 'Groq', baseURL: 'https://api.groq.com/openai/v1', models: ['llama-3.3-70b-versatile'] },
 ];
 
+/* 模型条目统一存取：字符串=官方 API 名（显示同值）；对象={name 常见名, api 官方 API 名}（下拉显示常见名，发送用官方名） */
+const aiModelApi = (m) => (typeof m === 'string' ? m : m.api);
+const aiModelLabel = (m) => (typeof m === 'string' ? m : m.name);
+/* 官方 API 名 → 常见显示名（查看态展示用）；查不到则原样返回 */
+function aiModelLabelOf(api) {
+  for (const p of AI_PROVIDERS) {
+    const hit = p.models.find((m) => aiModelApi(m) === api);
+    if (hit) return aiModelLabel(hit);
+  }
+  return api;
+}
+
 /* 切换厂商 → 刷新模型下拉（保留已选模型） */
 function aiProviderChange() {
   const prov = AI_PROVIDERS.find((p) => p.name === $('#ai-provider').value) || AI_PROVIDERS[0];
   const cur = $('#ai-model').value;
-  $('#ai-model').innerHTML = prov.models.map((m) => '<option value="' + esc(m) + '">' + esc(m) + '</option>').join('');
-  if (prov.models.includes(cur)) $('#ai-model').value = cur;
+  $('#ai-model').innerHTML = prov.models.map((m) => '<option value="' + esc(aiModelApi(m)) + '">' + esc(aiModelLabel(m)) + '</option>').join('');
+  if (prov.models.some((m) => aiModelApi(m) === cur)) $('#ai-model').value = cur;
 }
 
 /* ============ API Key 管理控制台（查看态：状态徽标 + 配置卡 + 测试/编辑/清除；编辑态：厂商/模型/Key） ============ */
@@ -784,7 +796,7 @@ async function renderAiConfigView(cfg) {
     '<div class="ai-badge-row" id="aiBadgeRow"><span class="ai-badge loading">◌ 校验中…</span><span class="ai-sub">正在测试 API Key 连通性</span></div>' +
     '<div class="ai-cfg-card">' +
       aiCfgRow('厂商', esc(provName)) +
-      aiCfgRow('模型', esc(cfg.model)) +
+      aiCfgRow('模型', esc(aiModelLabelOf(cfg.model))) +
       aiCfgRow('接口', esc(cfg.baseURL)) +
       '<div class="ai-row"><span class="ai-k">API Key</span><span class="ai-v">' + esc(cfg.apiKeyMasked) + '（已配置）</span></div>' +
     '</div>' +
@@ -802,7 +814,7 @@ async function renderAiConfigView(cfg) {
 function renderAiConfigEdit(first) {
   const base = (state.__aiCfg && state.__aiCfg.baseURL) || '';
   const prov = AI_PROVIDERS.find((p) => p.baseURL === base) || AI_PROVIDERS[0];
-  const model = (state.__aiCfg && state.__aiCfg.model) || prov.models[0];
+  const model = (state.__aiCfg && state.__aiCfg.model) || aiModelApi(prov.models[0]);
   $('#modalBody').innerHTML =
     '<div class="hint">选择厂商与模型，填入 API Key 即可——接口地址自动匹配，无需手动填写。</div>' +
     '<div class="form-grid" style="margin-top:10px;">' +
@@ -818,7 +830,7 @@ function renderAiConfigEdit(first) {
     '<div class="hint">配置仅在本地保存（config.json），不会上传到任何第三方。首次保存后会自动测试连接并解锁智能识别。</div>';
   $('#ai-provider').value = prov.name;
   aiProviderChange();
-  if (prov.models.includes(model)) $('#ai-model').value = model;
+  if (prov.models.some((m) => aiModelApi(m) === model)) $('#ai-model').value = model;
 }
 
 /* 测试连接：最小请求校验 Key / 模型 / 接口，结果写入徽标与结果区 */
