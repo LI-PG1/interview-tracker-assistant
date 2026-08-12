@@ -120,8 +120,8 @@ async function saveData() {
 }
 
 /* 进度分组（按招聘流程阶段划分）
- * 已投待进展(0)：投递后仍停在「简历筛选」等待（简历 wait 且后续环节无动作），或纯投递无环节记录
- * 进行中(1)：已通过简历筛选（resume pass），或已在笔试/面试/HR 等实质环节（无论等待还是待办）
+ * 已投待进展(0)：纯投递且无面试安排（无环节动作、无面试时间）
+ * 进行中(1)：已通过简历筛选（resume pass），或已在笔试/面试/HR 等实质环节，或已明确面试时间（interviewAt 非空 = 已进入面试环节，即便环节状态未维护）
  * 已挂/放弃(2)：任一环节 fail 或主动放弃
  * Offer(3)：终态通过
  */
@@ -130,16 +130,12 @@ function jobGroup(job) {
   if (job.result === 'fail' || job.result === 'giveup') return 2;
   const steps = stageList(job);
   const act = steps.filter((x) => x.v && x.v.state && x.v.state !== 'skip');
-  if (act.length === 0) {
-    // 纯投递（环节状态未登记），但已约面 → 已进入实质环节，算进行中
-    if (job.interviewAt) return 1;
-    return 0;
-  }
+  if (act.length === 0 && !job.interviewAt) return 0;   // 纯投递且无面试安排 → 已投待进展
   if (act.some((x) => x.v.state === 'fail')) return 2;  // 任一环节挂 → 已挂
   const first = act[0];
-  // 最早动作只是「简历筛选 待筛」且没有更进一步的环节 → 仍属已投待进展
-  if (first.key === 'resume' && first.v.state === 'wait' && act.length === 1) return 0;
-  return 1;                                             // 其余 → 进行中
+  // 最早动作只是「简历筛选 待筛」且无面试安排 → 仍属已投待进展；有面试时间即视为已进入面试环节（进行中）
+  if (first && first.key === 'resume' && first.v.state === 'wait' && act.length === 1 && !job.interviewAt) return 0;
+  return 1;                                             // 其余（含已有面试时间）→ 进行中
 }
 
 /* 是否「流程环节连续走到底」：至少一个环节通过、无 wait/fail，且最后一个 pass 之后无未到环节（skip 视为无此环节） */
