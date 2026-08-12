@@ -27,7 +27,7 @@ const RESULT_LABEL = { offer: 'Offer', fail: '挂', giveup: '放弃' };
 /* ============ 流程环节模型 v3（动态面试轮） ============
  * 固定骨架：简历筛选 / 笔试 / HR面（可选，state=skip 表示无此环节）
  * 面试轮次：interviews 动态数组，轮数由实际面试决定（1 面 / 2 面 / 3 面…）
- * 每轮元素：{ date: 'YYYY-MM-DD', state: null|pass|wait|fail|skip }
+ * 每轮元素：{ date: 'YYYY-MM-DD', state: null|pass|wait|todo|fail|skip }（wait=等结果、todo=待进行）
  */
 const CN_NUM = ['一','二','三','四','五','六','七','八','九','十'];
 const STAGE_LABELS = { resume: '简历筛选', written: '笔试', hr: 'HR面' };
@@ -151,12 +151,12 @@ function jobGroup(job) {
   return 1;                                             // 其余（含已有面试时间）→ 进行中
 }
 
-/* 是否「流程环节连续走到底」：至少一个环节通过、无 wait/fail，且最后一个 pass 之后无未到环节（skip 视为无此环节） */
+/* 是否「流程环节连续走到底」：至少一个环节通过、无 wait/todo/fail，且最后一个 pass 之后无未到环节（skip 视为无此环节） */
 function allStagesPassed(job) {
   const steps = stageList(job);
   const hasPass = steps.some((x) => x.v.state === 'pass');
   if (!hasPass) return false;
-  if (steps.some((x) => x.v.state === 'wait' || x.v.state === 'fail')) return false;
+  if (steps.some((x) => x.v.state === 'wait' || x.v.state === 'todo' || x.v.state === 'fail')) return false;
   const lastPassIdx = steps.map((x) => x.v.state).lastIndexOf('pass');
   for (let i = lastPassIdx + 1; i < steps.length; i++) {
     const st = steps[i].v.state;
@@ -166,11 +166,11 @@ function allStagesPassed(job) {
 }
 const GROUP_LABEL = { 0: '已投待进展', 1: '进行中', 2: '已挂 / 放弃', 3: 'Offer' };
 
-/* 面试是否已结束：最后一轮面试已出结果（pass/fail）→ 其预约时间不再置顶/提醒；用户约了新面试（更新 interviewAt + 加 wait 轮）后自动恢复 */
+/* 面试是否已结束：最后一轮面试已出结果（pass/fail/wait 等结果）→ 其预约时间不再置顶/提醒；约了新面试（更新 interviewAt + 加 todo 待进行轮）后自动恢复 */
 function interviewSettled(job) {
   const ivs = (job.stages || {}).interviews || [];
   const last = ivs[ivs.length - 1];
-  return !!last && (last.state === 'pass' || last.state === 'fail');
+  return !!last && (last.state === 'pass' || last.state === 'fail' || last.state === 'wait');
 }
 
 /* 有未来的面试时间（面试自动置顶的前提） */
@@ -181,11 +181,11 @@ function hasFutureInterview(job) {
   return !isNaN(t) && t > Date.now();
 }
 
-/* 笔试 DDL（截止时间，datetime 毫秒；0 表示无；笔试已通过/已挂后取消提醒） */
+/* 笔试 DDL（截止时间，datetime 毫秒；0 表示无）。时间提示只和「待进行/Offer 过期」绑定：等结果（wait）或已结束（pass/fail）→ 取消截止提醒 */
 function writtenDeadlineTs(job) {
   const w = (job.stages || {}).written;
   if (!w || !w.deadline) return 0;
-  if (w.state === 'pass' || w.state === 'fail') return 0; // 预定任务（笔试）已完成：不再置顶/提醒
+  if (w.state === 'pass' || w.state === 'fail' || w.state === 'wait') return 0;
   const t = new Date(w.deadline).getTime();
   return !isNaN(t) ? t : 0;
 }
@@ -220,7 +220,7 @@ function pipelineDepth(job) {
 
 function priorityScore(job) {
   const depth = pipelineDepth(job); // 0~1，饱和
-  const hasWait = stageList(job).some((x) => x.v.state === 'wait'); // 等待结果 / 待办中
+  const hasWait = stageList(job).some((x) => x.v.state === 'wait' || x.v.state === 'todo'); // 等结果 / 待进行：有下一动作
   let recency = 0;
   if (job.updatedAt) {
     const hours = (Date.now() - new Date(job.updatedAt).getTime()) / 3600000;
@@ -287,9 +287,10 @@ function flowStepHtml(label, v) {
   if (v.state === 'fail') return '<span class="f-step"><span class="f-dot fail"></span>' + label + ' <span class="f-date">' + esc(d) + ' 挂</span></span>';
   if (v.state === 'skip') return '<span class="f-step"><span class="f-dot"></span>' + label + ' <span>跳过</span></span>';
   if (v.state === 'wait') {
-    const isFuture = v.date && String(v.date).slice(0, 10) >= localToday();
-    const cls = isFuture ? 'todo' : 'wait';
-    return '<span class="f-step"><span class="f-dot ' + cls + '"></span>' + label + ' <span class="f-date ' + cls + '">' + esc(d) + ' 待</span></span>';
+    return '<span class="f-step"><span class="f-dot wait"></span>' + label + ' <span class="f-date wait">' + esc(d) + ' 等结果</span></span>';
+  }
+  if (v.state === 'todo') {
+    return '<span class="f-step"><span class="f-dot todo"></span>' + label + ' <span class="f-date todo">' + esc(d) + ' 待</span></span>';
   }
   return '';
 }
@@ -508,9 +509,9 @@ function renderReminders() {
         items.push({ key: job.id + '|' + job.todo.due, pri: 2, ts: t, ddl: true, id: job.id, text: job.todo.due.slice(5) + ' 待办截止｜' + cname + ' ' + job.title + (job.todo.text ? '：' + job.todo.text : '') });
       }
     }
-    // 等待中的环节（仅日期，按当天 00:00 处理；含今天「等结果」的跟进项）
+    // 待进行中的环节（仅日期，按当天 00:00 处理；时间提示只和「待进行」绑定，等结果不提醒）
     for (const x of stageList(job)) {
-      if (x.v && x.v.state === 'wait' && x.v.date) {
+      if (x.v && x.v.state === 'todo' && x.v.date) {
         const t = localMidnight(x.v.date);
         if (t && t >= todayStart && t <= day7) {
           items.push({ key: job.id + '|' + x.v.date, pri: 1, ts: t, ddl: false, id: job.id, text: x.v.date.slice(5) + ' ' + x.label + '｜' + cname + ' ' + job.title });
@@ -1009,7 +1010,8 @@ function stageRowHtml(key, label, v, removable) {
     '<select data-f="state">' +
       '<option value="">留空（未到）</option>' +
       '<option value="pass"' + (st === 'pass' ? ' selected' : '') + '>通过</option>' +
-      '<option value="wait"' + (st === 'wait' ? ' selected' : '') + '>等结果 / 待进行</option>' +
+      '<option value="wait"' + (st === 'wait' ? ' selected' : '') + '>等结果</option>' +
+      '<option value="todo"' + (st === 'todo' ? ' selected' : '') + '>待进行（有预约/截止时间）</option>' +
       '<option value="fail"' + (st === 'fail' ? ' selected' : '') + '>被挂</option>' +
       '<option value="skip"' + (st === 'skip' ? ' selected' : '') + '>跳过（无此环节）</option>' +
     '</select>' +
@@ -1054,7 +1056,7 @@ function normalizeStages(stages, job) {
     let lastAct = -1;
     for (let i = 0; i < seq.length; i++) {
       const v = seq[i];
-      if (v && (v.state === 'pass' || v.state === 'wait' || v.state === 'fail' || v.date)) lastAct = i;
+      if (v && (v.state === 'pass' || v.state === 'wait' || v.state === 'todo' || v.state === 'fail' || v.date)) lastAct = i;
     }
     if (lastAct >= 0 && seq[lastAct].state !== 'fail') seq[lastAct].state = 'fail';
   }
@@ -1067,7 +1069,7 @@ function normalizeStages(stages, job) {
   }
   for (let i = 0; i < seq.length - 1; i++) {
     if (seq[i] && seq[i].state === 'pass' && seq[i + 1] && !seq[i + 1].state) {
-      seq[i + 1].state = 'wait';
+      seq[i + 1].state = 'todo'; // 通过后下一环节自动「待进行」（有预约/截止时间则产生时间提示）
       seq[i + 1].date = seq[i + 1].date || '';
     }
   }
