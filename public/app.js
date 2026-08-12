@@ -298,6 +298,12 @@ function starState(job) {
   return 'off';
 }
 
+/* 岗位名是否缺省（空或占位文本）——缺省时卡片标题处显示「补全岗位名」入口，点击直接进入编辑弹窗修改 */
+function isPlaceholderTitle(job) {
+  const t = String(job.title || '').trim();
+  return !t || t === '（岗位名称待补充）' || t === '待补充';
+}
+
 /* 单张卡片模板（横版：星标 → 公司/岗位/标签 → 流程条 → meta → 操作） */
 function cardHtml(job) {
   const c = companyOf(job) || { name: '?' };
@@ -347,7 +353,9 @@ function cardHtml(job) {
     '<div class="card-main">' +
       '<div class="card-top">' +
         '<span class="company">' + esc(c.name) + '</span>' +
-        '<span class="job-title">' + esc(job.title) + '</span>' +
+        (isPlaceholderTitle(job)
+          ? '<button class="job-title-fill" data-act="edit" data-id="' + job.id + '" title="岗位名未填，点击补全">＋ 补全岗位名</button>'
+          : '<span class="job-title">' + esc(job.title) + '</span>') +
         '<span class="tag ' + esc(job.category) + '">' + CATEGORY_LABEL[job.category] + '</span>' +
         resultHtml(job) +
       '</div>' +
@@ -1098,6 +1106,10 @@ function openEditModal(jobId) {
     hrRow +
     '<div class="form-item full" style="margin-top:10px;"><label>备注 / 下一动作</label><textarea id="f-note" rows="2">' + esc(job.note || '') + '</textarea></div>';
   showModal(true);
+  // 岗位名缺省时自动聚焦岗位名输入框，引导用户补全
+  if (isPlaceholderTitle(job)) {
+    setTimeout(() => { const t = $('#f-title'); if (t) t.focus(); }, 60);
+  }
 }
 
 /* ============ 表单：保存 ============ */

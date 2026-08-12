@@ -99,6 +99,9 @@ header h1{font-size:22px; font-weight:800; letter-spacing:.3px;}
 .card-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
 .card-top .company{font-weight:800; font-size:14px;}
 .card-top .job-title{font-size:14px; color:var(--text); font-weight:500;}
+/* 岗位名缺省时的补全入口（虚线按钮，点击进入编辑弹窗） */
+.job-title-fill{border:1px dashed var(--line-strong); background:var(--blue-bg); color:var(--blue); border-radius:6px; padding:1px 8px; font-size:12px; font-weight:600; cursor:pointer;}
+.job-title-fill:hover{border-color:var(--blue); background:var(--blue); color:#fff;}
 .tag{display:inline-block; border-radius:5px; padding:1px 8px; font-size:11px; font-weight:600;}
 .tag.intern{background:var(--blue-bg); color:var(--blue);} .tag.autumn{background:var(--orange-bg); color:var(--orange);}
 .res-offer{color:var(--green); font-weight:800; font-size:13px;}
