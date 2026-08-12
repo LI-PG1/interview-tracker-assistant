@@ -82,6 +82,19 @@ function fmtDateTime(ts) {
   const p = (n) => String(n).padStart(2, '0');
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
+/* 面试时间统一为本地 'YYYY-MM-DD HH:mm'：兼容无时区本地串（保存格式）与历史遗留的 UTC（Z/±hh:mm）串（旧版 toISOString 产物） */
+function localIvStr(ts) {
+  if (!ts) return '';
+  const s = String(ts);
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      const p = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+  }
+  return s.slice(0, 16).replace('T', ' ');
+}
 
 function companyOf(job) { return state.companies.find((c) => c.id === job.companyId); }
 
@@ -310,7 +323,7 @@ function cardHtml(job) {
   if (job.city) meta.push('<span class="m-item">📍 ' + esc(job.city) + '</span>');
   if (job.internType) meta.push('<span class="m-item">' + (job.internType === 'convert' ? '🔁 可转正' : '🏃 无转正（日常）') + '</span>');
   if (job.interviewAt && !dead && job.result !== 'offer') {
-    const iv = formatDate(job.interviewAt) + ' ' + formatTime(job.interviewAt);
+    const iv = localIvStr(job.interviewAt);
     meta.push('<span class="m-item ' + (urgentIn24h(job) ? 'urgent' : '') + '">🎯 面试 ' + esc(iv) + (urgentIn24h(job) ? '（24h 内）' : '') + '</span>');
   }
   const wdl = writtenDeadlineTs(job);
@@ -408,7 +421,7 @@ function renderPinnedBar() {
     }
     const ia = job.interviewAt ? new Date(job.interviewAt).getTime() : null;
     if (ia && !isNaN(ia) && ia > Date.now()) {
-      items.push({ t: ia, key: 'interview:' + job.id, kind: '面试', name: cname + '｜' + job.title, time: '面试 ' + formatDate(job.interviewAt) + ' ' + formatTime(job.interviewAt), remove: null, id: job.id });
+      items.push({ t: ia, key: 'interview:' + job.id, kind: '面试', name: cname + '｜' + job.title, time: '面试 ' + localIvStr(job.interviewAt), remove: null, id: job.id });
     } else if (job.pinnedAt) {
       items.push({ t: new Date(job.pinnedAt).getTime(), key: 'pinned:' + job.id, kind: '置顶', name: cname + '｜' + job.title, time: '', remove: 'unpin-job', id: job.id });
     }
@@ -1067,7 +1080,7 @@ function openEditModal(jobId) {
         '<option value="nonconvert"' + (job.internType === 'nonconvert' ? ' selected' : '') + '>无转正实习（日常）</option>' +
       '</select></div>'
       : '') +
-    '<div class="form-item"><label>面试时间（选填，用于提醒与置顶）</label><input id="f-interview" type="datetime-local" value="' + esc(job.interviewAt ? job.interviewAt.slice(0, 16) : '') + '"></div>' +
+    '<div class="form-item"><label>面试时间（选填，用于提醒与置顶）</label><input id="f-interview" type="datetime-local" value="' + esc(job.interviewAt ? localIvStr(job.interviewAt).replace(' ', 'T') : '') + '"></div>' +
     '<div class="form-item"><label>最终结果</label><div class="result-row"><select id="f-result">' +
       '<option value="">无（流程中）</option>' +
       '<option value="offer"' + (job.result === 'offer' ? ' selected' : '') + '>Offer</option>' +
@@ -1143,7 +1156,7 @@ async function saveForm() {
         city,
         url: $('#f-url').value.trim(),
         appliedDate: $('#f-applied').value || localToday(),
-        interviewAt: $('#f-interview').value ? new Date($('#f-interview').value).toISOString() : null,
+        interviewAt: $('#f-interview').value || null, // datetime-local 值为本地时间（无时区），不转 UTC 避免显示偏移
         note: $('#f-note').value.trim(),
         todo: (() => { const t = $('#f-todo-text').value.trim(); const d = $('#f-todo-due').value; return (t || d) ? { text: t, due: d || '' } : null; })(),
         offerDeadline: $('#f-offer-deadline').value || null,
@@ -1158,7 +1171,7 @@ async function saveForm() {
     } else {
       const job = state.jobs.find((j) => j.id === state.editingJobId);
       if (!job) return;
-      job.interviewAt = $('#f-interview').value ? new Date($('#f-interview').value).toISOString() : null;
+      job.interviewAt = $('#f-interview').value || null; // 本地时间（无时区），不转 UTC 避免显示偏移
       job.result = $('#f-result').value || null;
       // 终态（挂/放弃）不再有未来面试：清除残留面试时间，避免继续被面试置顶/提醒
       if (job.result === 'fail' || job.result === 'giveup') job.interviewAt = null;
