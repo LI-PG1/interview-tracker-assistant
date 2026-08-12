@@ -220,22 +220,18 @@ function priorityScore(job) {
   return depth * 0.6 + recency * 0.4 + (hasWait ? 0.15 : 0) + (job.internType === 'convert' ? 0.1 : 0);
 }
 
-/* Offer 待确认：已拿 Offer 即待确认（未填截止日期 → 一直待确认；有截止日期且未过期 → 最优先：不按期确认会失效；过期 → 不再待确认，沉入终态 Offer 组） */
+/* Offer 待确认：所有已标记 Offer 均处于待确认（无终态 Offer；截止日期仅作展示与组内排序参考） */
 function offerPending(job) {
-  if (job.result !== 'offer') return false;
-  if (!job.offerDeadline) return true; // 未填截止日期：未确认接受，一直待确认
-  const t = localMidnight(job.offerDeadline);
-  return !!t && t >= localMidnight(localToday());
+  return job.result === 'offer';
 }
 
-/* ============ 排序（v4 分层：面试 → 笔试DDL紧迫 → Offer 待确认 → 手动置顶 → 常规 → 终态） ============ */
+/* ============ 排序（v4 分层：面试 → 笔试DDL紧迫 → Offer 待确认 → 手动置顶 → 常规 → 终态挂/放弃） ============ */
 function sortGroup(job) {
   if (offerPending(job)) return 1.5;        // Offer 待确认（未立即确认多有顾虑，置顶提示栏单独分区最高优先，列表放进行中之后）
   if (job.result === 'fail' || job.result === 'giveup') return 4; // 终态挂/放弃：不再参与面试/DDL 置顶
   if (hasFutureInterview(job)) return 0;   // 面试自动置顶（按面试时间升序）
   if (urgentWrittenDeadline(job)) return 1; // 笔试 48h 内截止（按截止时间升序）
   if (job.pinnedAt) return 2;              // 手动置顶（按置顶先后）
-  if (job.result === 'offer') return 5;    // 终态 Offer（无截止/已过期）
   return 3;                                // 常规（按优先级分）
 }
 
@@ -248,14 +244,6 @@ function sortJobs(jobs) {
     if (ga === 1.5) return localMidnight(a.offerDeadline) - localMidnight(b.offerDeadline);
     if (ga === 2) return String(a.pinnedAt).localeCompare(String(b.pinnedAt));
     if (ga === 3) return priorityScore(b) - priorityScore(a);
-    // 终态：Offer 组按有效期紧迫排序（越近越前，无截止按更新时间）；挂/放弃按更新时间
-    if (ga === 5) {
-      const ta = a.offerDeadline ? localMidnight(a.offerDeadline) : 0;
-      const tb = b.offerDeadline ? localMidnight(b.offerDeadline) : 0;
-      if (ta && tb) return ta - tb;
-      if (ta) return -1;
-      if (tb) return 1;
-    }
     return String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
   });
 }
@@ -393,8 +381,7 @@ function renderList() {
     { g: '1', label: '进行中', icon: '⚡' },
     { g: '1.5', label: 'Offer 待确认', icon: '🎗', test: offerPending },
     { g: '0', label: '已投待进展', icon: '📥' },
-    { g: '2', label: '已挂 / 放弃', icon: '✖' },
-    { g: '3', label: 'Offer', icon: '🏆', test: (j) => !offerPending(j) && String(jobGroup(j)) === '3' }, // 待确认的 Offer 已在独立分组，避免重复
+    { g: '2', label: '已挂 / 放弃', icon: '✖' }, // 所有 Offer 均归入「Offer 待确认」，无终态 Offer 分组
   ];
   let html = '';
   for (const gr of groups) {
