@@ -166,17 +166,26 @@ function allStagesPassed(job) {
 }
 const GROUP_LABEL = { 0: '已投待进展', 1: '进行中', 2: '已挂 / 放弃', 3: 'Offer' };
 
+/* 面试是否已结束：最后一轮面试已出结果（pass/fail）→ 其预约时间不再置顶/提醒；用户约了新面试（更新 interviewAt + 加 wait 轮）后自动恢复 */
+function interviewSettled(job) {
+  const ivs = (job.stages || {}).interviews || [];
+  const last = ivs[ivs.length - 1];
+  return !!last && (last.state === 'pass' || last.state === 'fail');
+}
+
 /* 有未来的面试时间（面试自动置顶的前提） */
 function hasFutureInterview(job) {
   if (!job.interviewAt) return false;
+  if (interviewSettled(job)) return false; // 面试已出结果：预定任务完成，不再置顶
   const t = new Date(job.interviewAt).getTime();
   return !isNaN(t) && t > Date.now();
 }
 
-/* 笔试 DDL（截止时间，datetime 毫秒；0 表示无） */
+/* 笔试 DDL（截止时间，datetime 毫秒；0 表示无；笔试已通过/已挂后取消提醒） */
 function writtenDeadlineTs(job) {
   const w = (job.stages || {}).written;
   if (!w || !w.deadline) return 0;
+  if (w.state === 'pass' || w.state === 'fail') return 0; // 预定任务（笔试）已完成：不再置顶/提醒
   const t = new Date(w.deadline).getTime();
   return !isNaN(t) ? t : 0;
 }
@@ -191,6 +200,7 @@ function urgentWrittenDeadline(job) {
 
 function urgentIn24h(job) {
   if (!job.interviewAt) return false;
+  if (interviewSettled(job)) return false; // 面试已出结果：不再按预约时间提醒紧迫
   const t = new Date(job.interviewAt).getTime();
   if (!t || isNaN(t)) return false;
   const diff = t - Date.now();
@@ -317,7 +327,7 @@ function cardHtml(job) {
   if (job.appliedDate) meta.push('<span class="m-item">投递 ' + esc(formatDate(job.appliedDate)) + '</span>');
   if (job.city) meta.push('<span class="m-item">📍 ' + esc(job.city) + '</span>');
   if (job.internType) meta.push('<span class="m-item">' + (job.internType === 'convert' ? '🔁 可转正' : '🏃 无转正（日常）') + '</span>');
-  if (job.interviewAt && !dead && job.result !== 'offer') {
+  if (job.interviewAt && !dead && job.result !== 'offer' && !interviewSettled(job)) {
     const iv = localIvStr(job.interviewAt);
     meta.push('<span class="m-item ' + (urgentIn24h(job) ? 'urgent' : '') + '">🎯 面试 ' + esc(iv) + (urgentIn24h(job) ? '（24h 内）' : '') + '</span>');
   }
@@ -472,8 +482,8 @@ function renderReminders() {
     if (job.result === 'fail' || job.result === 'giveup') continue;
     // 置顶栏已展示的岗位：待办不再重复出现（同一岗位的提醒只出现在一个入口）
     if (inPinnedBar(job)) continue;
-    // 面试时间（有具体时刻，信息量最高）
-    if (job.interviewAt) {
+    // 面试时间（有具体时刻，信息量最高；面试已出结果则不再提醒）
+    if (job.interviewAt && !interviewSettled(job)) {
       const t = new Date(job.interviewAt).getTime();
       if (!isNaN(t) && t >= now && t <= day7) {
         items.push({ key: job.id + '|' + fmtDateTime(t).slice(0, 10), pri: 3, ts: t, ddl: false, id: job.id, text: fmtDateTime(t).slice(5) + ' 面试｜' + cname + ' ' + job.title });
