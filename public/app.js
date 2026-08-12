@@ -406,6 +406,15 @@ function renderList() {
   list.innerHTML = html;
 }
 
+/* 是否出现在置顶栏（Offer 待确认 / 未来面试自动置顶 / 手动置顶）——置顶与待办互斥去重：置顶已展示的岗位，待办不再重复出现 */
+function inPinnedBar(job) {
+  if (job.result === 'fail' || job.result === 'giveup') return false; // 终态不参与置顶
+  if (offerPending(job)) return true;                                 // Offer 待确认分区
+  const ia = job.interviewAt ? new Date(job.interviewAt).getTime() : null;
+  if (ia && !isNaN(ia) && ia > Date.now()) return true;               // 面试自动置顶
+  return !!job.pinnedAt;                                              // 手动置顶
+}
+
 /* ============ 渲染：置顶栏（Offer 待确认分区最高优先 + 面试/手动置顶分区） ============ */
 function renderPinnedBar() {
   const box = $('#pinnedItems');
@@ -465,6 +474,8 @@ function renderReminders() {
     const cname = (companyOf(job) || {}).name;
     // 终态（挂/放弃）不再提醒：没有后续待跟进动作
     if (job.result === 'fail' || job.result === 'giveup') continue;
+    // 置顶栏已展示的岗位：待办不再重复出现（同一岗位的提醒只出现在一个入口）
+    if (inPinnedBar(job)) continue;
     // 面试时间（有具体时刻，信息量最高）
     if (job.interviewAt) {
       const t = new Date(job.interviewAt).getTime();
