@@ -1080,6 +1080,8 @@ function openEditModal(jobId) {
 
   $('#modalBody').innerHTML =
     '<div class="form-grid">' +
+    '<div class="form-item"><label>公司名称 <span class="req">*</span></label><input id="f-company" value="' + esc(c ? c.name : '') + '" placeholder="修改后将同步该公司全部岗位"></div>' +
+    '<div class="form-item"><label>岗位名称 <span class="req">*</span></label><input id="f-title" value="' + esc(job.title || '') + '" placeholder="如：大模型推理优化实习生"></div>' +
     (job.category === 'intern'
       ? '<div class="form-item"><label>实习类型（选填）</label><select id="f-intern-type">' +
         '<option value="">未知</option>' +
@@ -1182,6 +1184,20 @@ async function saveForm() {
     } else {
       const job = state.jobs.find((j) => j.id === state.editingJobId);
       if (!job) return;
+      // 公司名称 / 岗位名称可修改（必填校验）
+      document.querySelectorAll('#modalBody .err').forEach((el) => el.classList.remove('err'));
+      const cName = $('#f-company').value.trim();
+      const tName = $('#f-title').value.trim();
+      let miss = [];
+      if (!cName) { miss.push('公司名称'); $('#f-company').classList.add('err'); }
+      if (!tName) { miss.push('岗位名称'); $('#f-title').classList.add('err'); }
+      if (miss.length) {
+        toast('请完成必填项：' + miss.join('、'), true);
+        return;
+      }
+      const cEdit = companyOf(job);
+      if (cEdit && cEdit.name !== cName) cEdit.name = cName; // 修改公司实体名（该公司全部岗位同步显示）
+      if (job.title !== tName) job.title = tName;
       job.interviewAt = $('#f-interview').value || null; // 本地时间（无时区），不转 UTC 避免显示偏移
       job.result = $('#f-result').value || null;
       // 终态（挂/放弃）不再有未来面试：清除残留面试时间，避免继续被面试置顶/提醒
