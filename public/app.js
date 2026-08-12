@@ -220,9 +220,10 @@ function priorityScore(job) {
   return depth * 0.6 + recency * 0.4 + (hasWait ? 0.15 : 0) + (job.internType === 'convert' ? 0.1 : 0);
 }
 
-/* Offer 待确认：已拿 Offer 且有效期未过期（最优先：不按期确认会失效） */
+/* Offer 待确认：已拿 Offer 即待确认（未填截止日期 → 一直待确认；有截止日期且未过期 → 最优先：不按期确认会失效；过期 → 不再待确认，沉入终态 Offer 组） */
 function offerPending(job) {
-  if (job.result !== 'offer' || !job.offerDeadline) return false;
+  if (job.result !== 'offer') return false;
+  if (!job.offerDeadline) return true; // 未填截止日期：未确认接受，一直待确认
   const t = localMidnight(job.offerDeadline);
   return !!t && t >= localMidnight(localToday());
 }
