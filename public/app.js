@@ -698,14 +698,22 @@ function renderAiConfirm(data) {
   if (d.offerDeadline) $('#f-offer-deadline').value = String(d.offerDeadline).slice(0, 10);
 
   // 环节预填（固定 + 动态面试轮）
-  // 先按与「手动添加保存」相同的状态机归一化（fail→后续清空；pass→下一环节 wait），保证识别与手填走同一数据模型与算法
+  // 先按与「手动添加保存」相同的状态机归一化（fail→后续清空；pass→下一环节 todo；隐含前置通过），保证识别与手填走同一数据模型与算法
   const s = d.stages || {};
-  if (s.resume || s.written || (s.interviews || []).length || s.hr) normalizeStages(s);
+  // 隐含前置通过：识别到面试信息 → 简历/笔试自动默认通过；无面试轮时自动补「一面 待进行」
+  if (d.interviewAt) {
+    s.resume = s.resume || { date: '', state: null, deadline: null };
+    s.written = s.written || { date: '', state: null, deadline: null };
+    if (!s.interviews) s.interviews = [];
+    if (s.interviews.length === 0) s.interviews.push({ date: String(d.interviewAt).slice(0, 10), state: 'todo' });
+  }
+  // 与「手动添加保存」相同的状态机归一化（fail→后续清空；pass→下一环节 todo；隐含前置通过）
+  if (s.resume || s.written || (s.interviews || []).length || s.hr) normalizeStages(s, { interviewAt: d.interviewAt || null });
   if (s.resume) setStageRow('resume', s.resume);
   if (s.written) setStageRow('written', s.written);
   (s.interviews || []).forEach((v, i) => {
     if (!v || !(v.state || v.date)) return;
-    if (i > 0) addRoundRow(); // 追加第 2+ 轮（自动编号）
+    addRoundRow(); // 每轮都建行（含第一轮：AI 确认表单无默认 iv0 行）
     setStageRow('iv' + i, v);
   });
   if (s.hr) setStageRow('hr', s.hr);
@@ -1045,7 +1053,8 @@ function addRoundRow() {
 
 /* 保存时一致性推导（状态机合法性转移）：
  * 规则1：某环节 fail → 其后所有环节清空（流程终止）
- * 规则2：某环节 pass → 紧邻下一环节若空则自动置 wait（一次只推进一格） */
+ * 规则2：某环节 pass → 紧邻下一环节若空则自动置 todo（一次只推进一格）
+ * 规则3：隐含前置通过——有面试 → 简历/笔试自动通过；笔试通过 → 简历自动通过 */
 function normalizeStages(stages, job) {
   const seq = [];
   for (const k of ['resume', 'written']) if (stages[k]) seq.push(stages[k]);
@@ -1072,6 +1081,16 @@ function normalizeStages(stages, job) {
       seq[i + 1].state = 'todo'; // 通过后下一环节自动「待进行」（有预约/截止时间则产生时间提示）
       seq[i + 1].date = seq[i + 1].date || '';
     }
+  }
+  // 规则3（隐含前置通过）：能进入后续环节 = 前置环节已通过——
+  // 有面试信息（interviewAt 或已填面试轮）→ 简历+笔试自动通过；笔试已通过 → 简历自动通过（不覆盖用户明确设置的 skip）
+  const resume = stages.resume, written = stages.written;
+  const ivs = stages.interviews || [];
+  const hasInterviewInfo = !!(job && job.interviewAt) || ivs.some((v) => v && v.state && v.state !== 'skip');
+  if (written && written.state === 'pass' && resume && !resume.state) resume.state = 'pass';
+  if (hasInterviewInfo) {
+    if (written && !written.state) written.state = 'pass';
+    if (resume && !resume.state) resume.state = 'pass';
   }
   return stages;
 }
@@ -1179,7 +1198,6 @@ async function saveForm() {
       });
       while (iv.length > 0 && !hasStageContent(iv[iv.length - 1])) iv.pop(); // 清洗尾部空轮
       stages.interviews = iv;
-      normalizeStages(stages);
       const job = {
         id: newId(),
         companyId: c.id,
@@ -1198,6 +1216,7 @@ async function saveForm() {
         updatedAt: nowIso(),
         pinnedAt: null,
       };
+      normalizeStages(stages, job); // 状态机（含隐含前置通过：有面试 → 简历/笔试自动通过）
       // 环节被挂 → 结果自动联动
       if (stageList(job).some((x) => x.v.state === 'fail')) job.result = 'fail';
       state.jobs.push(job);
