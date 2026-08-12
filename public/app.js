@@ -957,7 +957,7 @@ function openAddModal(opts) {
     '<div class="form-item full"><label>备注 / 下一动作（选填）</label><textarea id="f-note" rows="2" placeholder="如：48h 内完成测评；08-15 二面…"></textarea></div>' +
   '<div class="form-item"><label>待办事项（选填）</label><input id="f-todo-text" placeholder="如：8-15 前完成注册并预约面试"></div>' +
   '<div class="form-item"><label>待办截止日期（选填）</label><input id="f-todo-due" type="date"></div>' +
-  '<div class="form-item"><label>Offer 截止日期（选填，获 Offer 后填写）</label><input id="f-offer-deadline" type="date" title="Offer 有效期，如 8-24 前确认"></div>' +
+  '<div id="f-offer-deadline-wrap" style="display:none;"><div class="form-item"><label>Offer 截止日期（选填，获 Offer 后填写）</label><input id="f-offer-deadline" type="date" title="Offer 有效期，如 8-24 前确认"></div></div>' +
   '</div>' +
     '<div class="hint" style="margin:10px 0 4px;">流程环节（选填，可先留空，后续在「更新」中推进）：</div>' +
     stageRowHtml('resume', STAGE_LABELS.resume, { date: '', state: null }, false) +
@@ -974,6 +974,14 @@ function catChange() {
   const catEl = document.querySelector('input[name="f-cat"]:checked');
   const box = $('#internTypeBox');
   if (box) box.style.display = (catEl && catEl.value === 'intern') ? '' : 'none';
+}
+
+/* Offer 截止日期栏显隐：仅「最终结果 = Offer」时显示（无最终结果选项的弹窗默认隐藏） */
+function syncOfferDeadline() {
+  const w = $('#f-offer-deadline-wrap');
+  if (!w) return;
+  const r = $('#f-result');
+  w.style.display = (r && r.value === 'offer') ? '' : 'none';
 }
 
 /* ============ 表单：更新（v3 动态环节） ============ */
@@ -1090,14 +1098,14 @@ function openEditModal(jobId) {
       '</select></div>'
       : '') +
     '<div class="form-item"><label>面试时间（选填，用于提醒与置顶）</label><input id="f-interview" type="datetime-local" value="' + esc(job.interviewAt ? localIvStr(job.interviewAt).replace(' ', 'T') : '') + '"></div>' +
-    '<div class="form-item"><label>最终结果</label><div class="result-row"><select id="f-result">' +
+    '<div class="form-item"><label>最终结果</label><div class="result-row"><select id="f-result" onchange="syncOfferDeadline()">' +
       '<option value="">无（流程中）</option>' +
       '<option value="offer"' + (job.result === 'offer' ? ' selected' : '') + '>Offer</option>' +
       '<option value="fail"' + (job.result === 'fail' ? ' selected' : '') + '>挂</option>' +
       '<option value="giveup"' + (job.result === 'giveup' ? ' selected' : '') + '>放弃</option>' +
     '</select>' +
     '<button type="button" class="btn btn-offer" data-act="mark-offer" title="全部环节标记为通过并设为 Offer">🏆 标记为 Offer</button></div></div>' +
-  '<div class="form-item"><label>Offer 截止日期（有效期，选填）</label><input id="f-offer-deadline" type="date" value="' + esc(job.offerDeadline || '') + '" title="如 8-24 前确认"></div>' +
+  '<div id="f-offer-deadline-wrap" style="display:' + (job.result === 'offer' ? '' : 'none') + ';"><div class="form-item"><label>Offer 截止日期（有效期，选填）</label><input id="f-offer-deadline" type="date" value="' + esc(job.offerDeadline || '') + '" title="如 8-24 前确认"></div></div>' +
   '<div class="form-item"><label>待办事项（期限类，选填）</label><input id="f-todo-text" value="' + esc((job.todo || {}).text || '') + '" placeholder="如：8-15 前完成注册并预约面试"></div>' +
     '<div class="form-item"><label>待办截止日期</label><input id="f-todo-due" type="date" value="' + esc((job.todo || {}).due || '') + '"></div>' +
     '</div>' +
@@ -1208,7 +1216,7 @@ async function saveForm() {
       const tt = $('#f-todo-text').value.trim();
       const dd = $('#f-todo-due').value;
       job.todo = (tt || dd) ? { text: tt, due: dd || '' } : null;
-      job.offerDeadline = $('#f-offer-deadline').value || null;
+      job.offerDeadline = job.result === 'offer' ? ($('#f-offer-deadline').value || null) : null; // 截止日期仅在 Offer 时有效
 
       // 收集环节（固定 + 动态面试轮）
       const stages = {};
@@ -1398,6 +1406,7 @@ function bindEvents() {
         if (sel.value !== 'skip') sel.value = 'pass';
       });
       $('#f-result').value = 'offer';
+      syncOfferDeadline(); // 联动显示 Offer 截止日期栏
       return;
     }
     const rank = e.target.closest('[data-rank]');
