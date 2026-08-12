@@ -13,15 +13,17 @@
 const state = {
   companies: [],
   jobs: [],
-  filter: { tab: 'intern', kw: '', status: '', city: '', internType: '' },
+  filter: { tab: 'intern', kw: '', status: '', city: '', workType: '' },
   editingJobId: null,
   aiDraft: null,        // 智能识别草稿（确认后走新增保存）
   modalMode: 'form',    // form=新增/更新/识别确认（底部「保存并重排」）；parse=识别输入；config=API 设置
   aiOnline: false,      // 在线模式（已配置且校验通过的 API Key）→ 智能识别可用；离线则置灰
-  aiForceCat: false,    // 识别确认模式：类别必选、实习岗位实习类型必选
+  aiForceCat: false,    // 识别确认模式：工作类型必选（识别信息通常不含工作类型）
 };
 
-const CATEGORY_LABEL = { intern: '实习', autumn: '秋招' };
+/* 工作类型四选项（并列）：秋招 / 有转正实习 / 日常实习 / 未知 */
+const WORK_TYPE_LABEL = { autumn: '秋招', convert: '有转正实习', nonconvert: '日常实习', unknown: '未知' };
+const WORK_TYPE_ORDER = ['autumn', 'convert', 'nonconvert', 'unknown'];
 const RESULT_LABEL = { offer: 'Offer', fail: '挂', giveup: '放弃' };
 
 /* ============ 流程环节模型 v3（动态面试轮） ============
@@ -226,8 +228,8 @@ function priorityScore(job) {
     const hours = (Date.now() - new Date(job.updatedAt).getTime()) / 3600000;
     recency = Math.exp(-hours / (24 * 7)); // 指数衰减：约 7 天半衰期
   }
-  // 第一性原理：求职者关注「有下一动作/待跟进」的投递；等待中的优先于纯投递；转正实习优先于无转正（机会价值更高）
-  return depth * 0.6 + recency * 0.4 + (hasWait ? 0.15 : 0) + (job.internType === 'convert' ? 0.1 : 0);
+  // 第一性原理：求职者关注「有下一动作/待跟进」的投递；等待中的优先于纯投递；有转正实习优先（机会价值更高）
+  return depth * 0.6 + recency * 0.4 + (hasWait ? 0.15 : 0) + (job.workType === 'convert' ? 0.1 : 0);
 }
 
 /* Offer 待确认：所有已标记 Offer 均处于待确认（无终态 Offer；截止日期仅作展示与组内排序参考） */
@@ -264,12 +266,14 @@ function filteredJobs() {
   return state.jobs.filter((job) => {
     if (f.tab === 'offer') {
       if (job.result !== 'offer') return false; // Offer 为结果维度分类
-    } else if (f.tab !== 'all' && job.category !== f.tab) {
-      return false;
+    } else if (f.tab === 'autumn') {
+      if (job.workType !== 'autumn') return false; // 秋招 Tab：工作类型=秋招
+    } else if (f.tab === 'intern') {
+      if (job.workType === 'autumn') return false; // 实习 Tab：非秋招（含未知，可在更新中改为秋招）
     }
     if (f.status !== '' && String(jobGroup(job)) !== f.status) return false;
     if (f.city && !jobCities(job).includes(f.city)) return false;
-    if (f.internType && job.internType !== f.internType) return false; // 实习类型细分（转正/无转正）
+    if (f.workType && job.workType !== f.workType) return false; // 工作类型筛选（秋招/有转正实习/日常实习/未知）
     if (f.kw) {
       const c = companyOf(job);
       const hay = (job.title || '') + ' ' + (c ? c.name : '');
@@ -327,7 +331,6 @@ function cardHtml(job) {
   const meta = [];
   if (job.appliedDate) meta.push('<span class="m-item">投递 ' + esc(formatDate(job.appliedDate)) + '</span>');
   if (job.city) meta.push('<span class="m-item">📍 ' + esc(job.city) + '</span>');
-  if (job.internType) meta.push('<span class="m-item">' + (job.internType === 'convert' ? '🔁 可转正' : '🏃 无转正（日常）') + '</span>');
   if (job.interviewAt && !dead && job.result !== 'offer' && !interviewSettled(job)) {
     const iv = localIvStr(job.interviewAt);
     meta.push('<span class="m-item ' + (urgentIn24h(job) ? 'urgent' : '') + '">🎯 面试 ' + esc(iv) + (urgentIn24h(job) ? '（24h 内）' : '') + '</span>');
@@ -367,7 +370,7 @@ function cardHtml(job) {
         (isPlaceholderTitle(job)
           ? '<button class="job-title-fill" data-act="edit" data-id="' + job.id + '" title="岗位名未填，点击补全">＋ 补全岗位名</button>'
           : '<span class="job-title">' + esc(job.title) + '</span>') +
-        '<span class="tag ' + esc(job.category) + '">' + CATEGORY_LABEL[job.category] + '</span>' +
+        '<span class="tag ' + esc(job.workType || 'unknown') + '">' + (WORK_TYPE_LABEL[job.workType] || '未知') + '</span>' +
         resultHtml(job) +
       '</div>' +
       '<div class="flow">' + flow + '</div>' +
@@ -386,8 +389,8 @@ function renderList() {
   const jobs = sortJobs(filteredJobs());
   if (jobs.length === 0) {
     list.innerHTML = '';
-    const itHint = state.filter.internType
-      ? '暂无标注为「' + (state.filter.internType === 'convert' ? '转正实习' : '无转正实习（日常）') + '」的岗位。可在「更新」弹窗中选择实习类型后保存，或用智能识别录入。'
+    const itHint = state.filter.workType
+      ? '暂无「' + (WORK_TYPE_LABEL[state.filter.workType] || state.filter.workType) + '」的岗位。可在「更新」弹窗中选择工作类型后保存，或用智能识别录入。'
       : '暂无符合条件的投递记录';
     $('#emptyRow').textContent = itHint;
     $('#emptyRow').style.display = 'block';
@@ -627,10 +630,10 @@ async function checkAiOnline() {
   renderQuickParse();
 }
 
-/* ============ 自动分类预填（第一性原理：秋招为主线，默认秋招；标题含实习关键词 → 实习） ============ */
-function guessCategory(title) {
-  if (/实习|intern|日常/i.test(title)) return 'intern';
-  return 'autumn';
+/* ============ 工作类型预填（标题含秋招/校招/应届 → 秋招；其余默认未知，不瞎猜转正与否） ============ */
+function guessWorkType(title) {
+  if (/秋招|校招|应届/i.test(title)) return 'autumn';
+  return 'unknown';
 }
 
 /* 新增弹窗：选择已有公司 → 新建公司（切换显示输入框） */
@@ -672,14 +675,11 @@ function renderAiConfirm(data) {
   if (comp && [...compSel.options].some((o) => o.value === comp)) compSel.value = comp;
   else if (comp) { compSel.value = '__new__'; $('#f-company').value = comp; $('#f-company').style.display = 'block'; }
   $('#f-title').value = d.title || '';
-  // 类别：识别出明确类别才预填；识别不出则留空强制用户选择（不得默认秋招）
-  if (d.category === 'intern' || d.category === 'autumn') {
-    const catEl = document.querySelector('input[name="f-cat"][value="' + d.category + '"]');
-    if (catEl) { catEl.checked = true; catChange(); }
+  // 工作类型：识别出明确类型才预填；识别不出则留空强制用户选择（不得默认）
+  if (d.workType && WORK_TYPE_LABEL[d.workType]) {
+    const wtEl = $('#f-work-type');
+    if (wtEl) wtEl.value = d.workType;
   }
-  // 实习类型（仅实习岗位；识别未给出则留空由用户选择）
-  const itEl = $('#f-intern-type');
-  if (itEl && d.internType) { itEl.value = d.internType; }
   if (d.city) {
     const citySel = $('#f-city-sel');
     if ([...citySel.options].some((o) => o.value === d.city)) citySel.value = d.city;
@@ -944,14 +944,12 @@ function openAddModal(opts) {
   opts = opts || {};
   state.editingJobId = null;
   state.modalMode = 'form';
-  state.aiForceCat = !!opts.forceCat; // 识别确认模式：类别必选，实习岗位实习类型必选
+  state.aiForceCat = !!opts.forceCat; // 识别确认模式：工作类型必选（识别信息通常不含工作类型）
   $('#modalTitle').textContent = '新增投递';
-  // forceCat=识别确认模式：类别不预填，强制用户选择（识别信息通常不含实习/秋招）
-  const defaultCat = opts.forceCat ? '' : guessCategory('');
-  // 实习类型下拉：普通新增可选「未知」；识别确认模式必须明确转正/无转正
-  const internOpts = opts.forceCat
-    ? '<option value="">请选择实习类型…</option><option value="convert">转正实习</option><option value="nonconvert">无转正实习（日常）</option>'
-    : '<option value="">未知</option><option value="convert">转正实习</option><option value="nonconvert">无转正实习（日常）</option>';
+  // 工作类型四选项并列（秋招/有转正实习/日常实习/未知）；普通新增默认「未知」；识别确认模式不预填强制选择
+  const wtOpts = opts.forceCat
+    ? '<option value="">请选择工作类型…</option><option value="autumn">秋招</option><option value="convert">有转正实习</option><option value="nonconvert">日常实习</option><option value="unknown">未知</option>'
+    : '<option value="unknown">未知</option><option value="autumn">秋招</option><option value="convert">有转正实习</option><option value="nonconvert">日常实习</option>';
   const companyOpts = state.companies.map((c) => '<option value="' + esc(c.name) + '">' + esc(c.name) + '</option>').join('');
   const cityOpts = [...new Set(state.jobs.flatMap((j) => jobCities(j)))].sort().map((c) => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
   $('#modalBody').innerHTML =
@@ -959,13 +957,9 @@ function openAddModal(opts) {
     '<div class="form-item"><label>公司名 <span class="req">*</span></label>' +
       '<select id="f-company-sel" onchange="companySelChange()"><option value="">请选择公司…</option>' + companyOpts + '<option value="__new__">＋ 新建公司…</option></select>' +
       '<input id="f-company" placeholder="输入新公司名" style="display:none;margin-top:6px;"></div>' +
-    '<div class="form-item"><label>岗位名 <span class="req">*</span></label><input id="f-title" placeholder="如：大模型推理优化实习生" oninput="if(/实习/.test(this.value)){document.querySelector(\'input[name=f-cat][value=intern]\').checked=true;catChange();}"></div>' +
-    '<div class="form-item" id="f-cat-box"><label>类别 <span class="req">*</span><span class="req-tip">' + (opts.forceCat ? '（必选：识别信息不含实习/秋招）' : '') + '</span></label><div class="radio-row">' +
-      '<label><input type="radio" name="f-cat" value="intern" ' + (defaultCat === 'intern' ? 'checked' : '') + ' onchange="catChange()">实习</label>' +
-      '<label><input type="radio" name="f-cat" value="autumn" ' + (defaultCat === 'autumn' ? 'checked' : '') + ' onchange="catChange()">秋招</label>' +
-    '</div></div>' +
-    '<div class="form-item" id="internTypeBox" style="display:none;"><label>实习类型 <span class="req" id="itReq" style="display:' + (opts.forceCat ? 'inline' : 'none') + '">*</span><span class="req-tip" id="itTip" style="display:' + (opts.forceCat ? 'inline' : 'none') + '">（实习岗位必选）</span></label><select id="f-intern-type">' +
-      internOpts +
+    '<div class="form-item"><label>岗位名 <span class="req">*</span></label><input id="f-title" placeholder="如：大模型推理优化实习生"></div>' +
+    '<div class="form-item"><label>工作类型 <span class="req" style="display:' + (opts.forceCat ? 'inline' : 'none') + '">*</span><span class="req-tip" style="display:' + (opts.forceCat ? 'inline' : 'none') + '">（识别信息不含工作类型，请确认）</span></label><select id="f-work-type">' +
+      wtOpts +
     '</select></div>' +
     '<div class="form-item"><label>城市（选填）</label>' +
       '<select id="f-city-sel" onchange="citySelChange()"><option value="">不限</option>' + cityOpts + '<option value="__other__">自定义…</option></select>' +
@@ -983,16 +977,8 @@ function openAddModal(opts) {
     stageRowHtml('written', STAGE_LABELS.written, { date: '', state: null }, false) +
     '<div id="roundWrap"><button type="button" class="btn add-round" data-act="add-round">＋ 添加一轮面试</button></div>' +
     stageRowHtml('hr', STAGE_LABELS.hr, { date: '', state: null }, false) +
-    '<div class="hint">必填项（<span class="req">*</span>）：公司名、岗位名、类别；其余均为选填。岗位名包含「实习」时自动勾选「实习」类别。</div>';
-  if (defaultCat) catChange();
+    '<div class="hint">必填项（<span class="req">*</span>）：公司名、岗位名、工作类型；其余均为选填。</div>';
   showModal(true);
-}
-
-/* 类别切换联动：仅「实习」时显示「实习类型（转正属性）」 */
-function catChange() {
-  const catEl = document.querySelector('input[name="f-cat"]:checked');
-  const box = $('#internTypeBox');
-  if (box) box.style.display = (catEl && catEl.value === 'intern') ? '' : 'none';
 }
 
 /* Offer 截止日期栏显隐：仅「最终结果 = Offer」时显示（无最终结果选项的弹窗默认隐藏） */
@@ -1121,13 +1107,12 @@ function openEditModal(jobId) {
     '<div class="form-grid">' +
     '<div class="form-item"><label>公司名称 <span class="req">*</span></label><input id="f-company" value="' + esc(c ? c.name : '') + '" placeholder="修改后将同步该公司全部岗位"></div>' +
     '<div class="form-item"><label>岗位名称 <span class="req">*</span></label><input id="f-title" value="' + esc(job.title || '') + '" placeholder="如：大模型推理优化实习生"></div>' +
-    (job.category === 'intern'
-      ? '<div class="form-item"><label>实习类型（选填）</label><select id="f-intern-type">' +
-        '<option value="">未知</option>' +
-        '<option value="convert"' + (job.internType === 'convert' ? ' selected' : '') + '>转正实习</option>' +
-        '<option value="nonconvert"' + (job.internType === 'nonconvert' ? ' selected' : '') + '>无转正实习（日常）</option>' +
-      '</select></div>'
-      : '') +
+    '<div class="form-item"><label>工作类型（选填）</label><select id="f-work-type">' +
+      '<option value="autumn"' + (job.workType === 'autumn' ? ' selected' : '') + '>秋招</option>' +
+      '<option value="convert"' + (job.workType === 'convert' ? ' selected' : '') + '>有转正实习</option>' +
+      '<option value="nonconvert"' + (job.workType === 'nonconvert' ? ' selected' : '') + '>日常实习</option>' +
+      '<option value="unknown"' + (job.workType === 'unknown' || !job.workType ? ' selected' : '') + '>未知</option>' +
+    '</select></div>' +
     '<div class="form-item"><label>面试时间（选填，用于提醒与置顶）</label><input id="f-interview" type="datetime-local" value="' + esc(job.interviewAt ? localIvStr(job.interviewAt).replace(' ', 'T') : '') + '"></div>' +
     '<div class="form-item"><label>最终结果</label><div class="result-row"><select id="f-result" onchange="syncOfferDeadline()">' +
       '<option value="">无（流程中）</option>' +
@@ -1158,19 +1143,17 @@ async function saveForm() {
   try {
     let offerPending = false;
     if (state.editingJobId === null) {
-      // 先清除上次错误标记，再统一校验必填项（公司/岗位/类别；识别确认模式实习岗位还须选实习类型）
+      // 先清除上次错误标记，再统一校验必填项（公司/岗位/工作类型；识别确认模式工作类型必选）
       document.querySelectorAll('#modalBody .err').forEach((el) => el.classList.remove('err'));
       const sel = $('#f-company-sel');
       const company = (sel && sel.value && sel.value !== '__new__') ? sel.value : $('#f-company').value.trim();
       const title = $('#f-title').value.trim();
-      const cat = document.querySelector('input[name="f-cat"]:checked');
+      const wtEl = $('#f-work-type');
+      const workType = wtEl ? wtEl.value : 'unknown';
       let miss = [];
       if (!company) { miss.push('公司名'); $('#f-company-sel').classList.add('err'); $('#f-company').classList.add('err'); }
       if (!title) { miss.push('岗位名'); $('#f-title').classList.add('err'); }
-      if (!cat) { miss.push('类别'); $('#f-cat-box').classList.add('err'); }
-      const itEl = $('#f-intern-type');
-      const internType = (cat && cat.value === 'intern') ? (itEl ? itEl.value : '') : '';
-      if (cat && cat.value === 'intern' && state.aiForceCat && !internType) { miss.push('实习类型'); $('#internTypeBox').classList.add('err'); }
+      if (state.aiForceCat && !workType) { miss.push('工作类型'); if (wtEl) wtEl.closest('.form-item').classList.add('err'); }
       if (miss.length) {
         toast('请完成必填项：' + miss.join('、'), true);
         return;
@@ -1202,8 +1185,7 @@ async function saveForm() {
         id: newId(),
         companyId: c.id,
         title,
-        category: cat.value,
-        internType: (cat.value === 'intern' && internType) ? internType : null,
+        workType,
         city,
         url: $('#f-url').value.trim(),
         appliedDate: $('#f-applied').value || localToday(),
@@ -1242,8 +1224,8 @@ async function saveForm() {
       // 终态（挂/放弃）不再有未来面试：清除残留面试时间，避免继续被面试置顶/提醒
       if (job.result === 'fail' || job.result === 'giveup') job.interviewAt = null;
       job.note = $('#f-note').value.trim();
-      const itEl = $('#f-intern-type');
-      if (itEl) job.internType = itEl.value || null; // 编辑弹窗含实习类型控件时回写；不含则不覆盖
+      const wtEl = $('#f-work-type');
+      if (wtEl) job.workType = wtEl.value || 'unknown'; // 编辑弹窗含工作类型控件时回写；不含则不覆盖
       const tt = $('#f-todo-text').value.trim();
       const dd = $('#f-todo-due').value;
       job.todo = (tt || dd) ? { text: tt, due: dd || '' } : null;
@@ -1374,7 +1356,7 @@ function bindEvents() {
   $('#searchInput').addEventListener('input', (e) => { state.filter.kw = e.target.value.trim(); render(); });
   $('#statusFilter').addEventListener('change', (e) => { state.filter.status = e.target.value; render(); });
   $('#cityFilter').addEventListener('change', (e) => { state.filter.city = e.target.value; render(); });
-  $('#internTypeFilter').addEventListener('change', (e) => { state.filter.internType = e.target.value; render(); });
+  $('#workTypeFilter').addEventListener('change', (e) => { state.filter.workType = e.target.value; render(); });
   $('#tabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab-btn');
     if (!btn) return;

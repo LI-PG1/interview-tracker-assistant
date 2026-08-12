@@ -133,7 +133,7 @@ const FIXED_STAGE_KEYS = ['resume', 'written', 'hr'];
 function validateAiResult(d) {
   const errs = [];
   if (d === null || typeof d !== 'object' || Array.isArray(d)) return ['输出不是 JSON 对象'];
-  if (d.category != null && d.category !== '' && !['intern', 'autumn'].includes(d.category)) errs.push('category 取值非法');
+  if (d.workType != null && d.workType !== '' && !['autumn', 'convert', 'nonconvert', 'unknown'].includes(d.workType)) errs.push('workType 取值非法');
   if (d.stages != null) {
     if (typeof d.stages !== 'object' || Array.isArray(d.stages)) errs.push('stages 结构非法');
     else {
@@ -163,8 +163,7 @@ function normalizeAiResult(d) {
   return {
     company: str(d.company),
     title: str(d.title),
-    category: ['intern', 'autumn'].includes(d.category) ? d.category : '',
-    internType: ['convert', 'nonconvert'].includes(d.internType) ? d.internType : null,
+    workType: ['autumn', 'convert', 'nonconvert', 'unknown'].includes(d.workType) ? d.workType : 'unknown',
     city: str(d.city),
     url: str(d.url),
     appliedDate: date(d.appliedDate),
@@ -220,8 +219,7 @@ const AI_PARSE_SYSTEM = [
   '{',
   '  "company": "公司名（无则空串）",',
   '  "title": "岗位名（无则空串）",',
-  '  "category": "intern 或 autumn（优先：含『实习/实习生/Intern/日常实习』→intern；否则含『秋招/校招/应届』→autumn；都不确定则空串，由用户确认）",',
-  '  "internType": "convert 或 nonconvert 或 null（仅实习岗位：明确『可转正/转正/校招实习』或字节系『项目：ByteIntern』→convert；『日常实习/无转正/项目：日常实习』→nonconvert；未提到则 null）",',
+  '  "workType": "autumn 或 convert 或 nonconvert 或 unknown（工作类型：含『秋招/校招/应届』→autumn；实习类中明确『可转正/转正/校招实习』或字节系『项目：ByteIntern』→convert；『日常实习/无转正/项目：日常实习』→nonconvert；实习但无法判断转正与否、或文本完全未提到 →unknown）",',
   '  "city": "城市（无则空串；多个城市用 / 分隔，如 北京/上海）",',
   '  "url": "投递/面试链接（无则空串）",',
   '  "appliedDate": "YYYY-MM-DD（无则空串）",',
@@ -235,9 +233,9 @@ const AI_PARSE_SYSTEM = [
   '    "interviews": [ { "date": "YYYY-MM-DD", "state": "pass|todo|wait|fail|skip|null" } ],',
   '    "hr": { "date": "YYYY-MM-DD", "state": "pass|todo|wait|fail|skip|null" }',
   '  },',
-  '  "uncertain": ["未识别/不确定、需要用户确认的点，如投递日期、面试时间、类别（实习/秋招）等，数组可为空"]',
+  '  "uncertain": ["未识别/不确定、需要用户确认的点，如投递日期、面试时间、工作类型（秋招/实习）等，数组可为空"]',
   '}',
-  '要求：只抽取文本中明确提到的信息，不要编造；日期统一为 YYYY-MM-DD；面试按轮次对应 interviews 数组（一面=第1项、二面=第2项…）；类别（实习/秋招）无法确定时 category 留空串并写入 uncertain（用户确认界面会强制选择）；不确定的信息留空并写入 uncertain。',
+  '要求：只抽取文本中明确提到的信息，不要编造；日期统一为 YYYY-MM-DD；面试按轮次对应 interviews 数组（一面=第1项、二面=第2项…）；工作类型无法确定时 workType 填 unknown 并写入 uncertain（用户可在确认界面修改）；不确定的信息留空并写入 uncertain。',
   '环节 state 枚举：pass=通过；todo=待进行（已预约/安排、还没进行，如已约定明天的面试或 48h 内要完成的笔试）；wait=等结果（该环节已完成、正在等待结果）；fail=被挂；skip=无此环节；null=未到/未提及。',
   '流程环节：文本未提到任何环节（简历/笔试/面试轮次/HR）时，stages 各 state 一律填 null（不要空串、不要编造），interviews 填空数组 [];不要因为提到会议/面试就把 stages 乱填。',
   '期限表达识别（重要）：把「X 月 X 日前 / 截止 / 最晚 / 须于 / deadline / DDL / 48h 内 / 3 天内」等明确期限都提取出来——',
