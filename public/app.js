@@ -13,7 +13,7 @@
 const state = {
   companies: [],
   jobs: [],
-  filter: { tab: 'intern', kw: '', status: '', city: '', workType: '' },
+  filter: { tab: 'all', kw: '', status: '', city: '', workType: '' },
   editingJobId: null,
   aiDraft: null,        // 智能识别草稿（确认后走新增保存）
   modalMode: 'form',    // form=新增/更新/识别确认（底部「保存并重排」）；parse=识别输入；config=API 设置
