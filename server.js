@@ -127,22 +127,15 @@ function extractJson(text) {
 
 /* ---------- AI 输出校验与归一化（稳定 / 高精确率优先） ---------- */
 const STAGE_STATE_ENUM = ['pass', 'todo', 'wait', 'fail', 'skip', null]; // todo=待进行、wait=等结果
-const FIXED_STAGE_KEYS = ['resume', 'written', 'hr'];
 
-/* 校验 AI 输出的结构合法性（宽松但拦截类型错误与非法枚举值；空串视为 null——提示词允许「不确定留空」，不可判死） */
+/* 校验 AI 输出的结构合法性（宽松：只拦截结构/类型错误；字段值域不判死——
+   非法值由 normalizeAiResult 兜底（workType→unknown、state→null），防止模型小偏差触发重试浪费与整单失败） */
 function validateAiResult(d) {
-  const errs = [];
   if (d === null || typeof d !== 'object' || Array.isArray(d)) return ['输出不是 JSON 对象'];
-  if (d.workType != null && d.workType !== '' && !['autumn', 'convert', 'nonconvert', 'unknown'].includes(d.workType)) errs.push('workType 取值非法');
+  const errs = [];
   if (d.stages != null) {
     if (typeof d.stages !== 'object' || Array.isArray(d.stages)) errs.push('stages 结构非法');
-    else {
-      for (const k of FIXED_STAGE_KEYS) {
-        const v = d.stages[k];
-        if (v != null && typeof v === 'object' && v.state !== '' && v.state != null && !STAGE_STATE_ENUM.includes(v.state)) errs.push(k + '.state 取值非法');
-      }
-      if (d.stages.interviews != null && !Array.isArray(d.stages.interviews)) errs.push('interviews 必须是数组');
-    }
+    else if (d.stages.interviews != null && !Array.isArray(d.stages.interviews)) errs.push('interviews 必须是数组');
   }
   return errs;
 }
@@ -235,7 +228,7 @@ const AI_PARSE_SYSTEM = [
   '  },',
   '  "uncertain": ["未识别/不确定、需要用户确认的点，如投递日期、面试时间、工作类型（秋招/实习）等，数组可为空"]',
   '}',
-  '要求：只抽取文本中明确提到的信息，不要编造；日期统一为 YYYY-MM-DD；面试按轮次对应 interviews 数组（一面=第1项、二面=第2项…）；工作类型无法确定时 workType 填 unknown 并写入 uncertain（用户可在确认界面修改）；不确定的信息留空并写入 uncertain。',
+  '要求：只抽取文本中明确提到的信息，不要编造；日期统一为 YYYY-MM-DD；面试按轮次对应 interviews 数组（一面=第1项、二面=第2项…）；环节 state 只能取下方枚举，**宁可 null 也不要自造其他值**；工作类型无法确定时 workType 填 unknown 并写入 uncertain（用户可在确认界面修改）；不确定的信息留空并写入 uncertain。',
   '环节 state 枚举：pass=通过；todo=待进行（已预约/安排、还没进行，如已约定明天的面试或 48h 内要完成的笔试）；wait=等结果（该环节已完成、正在等待结果）；fail=被挂；skip=无此环节；null=未到/未提及。',
   '流程环节：文本未提到任何环节（简历/笔试/面试轮次/HR）时，stages 各 state 一律填 null（不要空串、不要编造），interviews 填空数组 [];不要因为提到会议/面试就把 stages 乱填。',
   '期限表达识别（重要）：把「X 月 X 日前 / 截止 / 最晚 / 须于 / deadline / DDL / 48h 内 / 3 天内」等明确期限都提取出来——',
